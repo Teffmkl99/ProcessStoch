@@ -1,0 +1,868 @@
+---
+title: "TP2 de Processus Stochastiques"
+author: "Zinsou Ruffin Adja, Aziel Honore Agossou, Teffery Makonde Libanga"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+fontsize: 12pt
+output: pdf_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(actuar)
+library(cvar)
+```
+
+\newpage
+
+# Premier cas : modélisation d’un portefeuille   
+
+
+## a. Évaluation de la moyenne théorique de la perte totale actualisée pendant une période de longueur t  
+
+La perte totale actualisée pour l'ensemble du portefeuille entre $[0,t]$ a été définie comme suit.
+
+$$L_{totale}(t)=\sum_{i=1}^{100}L_i(t)$$  
+Ainsi,
+
+$$E(L_{totale}(t))=\sum_{i=1}^{100}E(L_i(t))$$  
+
+
+avec 
+
+$$L_i(t)=\sum_{k=1}^{N_i(t)}e^{-\delta S_{i,k}}M_iX_{i,k}$$  
+Si on suppose que $\delta=0$, alors
+$$L_i(t)=\sum_{k=1}^{N_i(t)}M_iX_{i,k}$$  
+Étant donné que $(N_i(t)|\Lambda=\lambda_i)\sim Poisson(\lambda_i*t)$, c'est-à-dire une variable de Poisson mixte, et que $X_{i,k}\sim Beta(\alpha_i,\beta_i)$, $L_i(t)$ est une Poisson composée de moyenne
+$$E(L_i(t))=E(N_i(t))*E(M_i*X_{i,k})$$
+
+soit, 
+
+$$E(L_i(t))=M_i*E(N_i(t))*E(X_{i})$$
+Explicitons chaque facteur du produit à droite de l'égalité.
+
+* $M_i$ est une constante, bien qu'elle soit conditionnelle au groupe de produits dérivés.
+
+$$E(N_i(t))=E(E(N_i(t)|\Lambda))$$
+Or, 
+$$E(N_i(t)|\Lambda=\lambda_i)=\lambda_i*t$$
+donc 
+
+$$E(N_i(t))=E(t*\Lambda)$$
+On sait que $\Lambda \sim Pareto(\theta_i,\lambda_i)$.
+
+Par conséquent,
+
+$$E(N_i(t))=t*\frac{\lambda_i}{\theta_i-1}, \  \ \theta_i>1$$
+Quant à l'espérance de $X_{i,k}$, elle vaut 
+$$E(X_{i})=\frac{\alpha_i}{\alpha_i+\beta_i}$$  
+
+En rassemblant le tout, on obtient
+
+$$E(L_i(t))=M_i*t*\frac{\lambda_i}{\theta_i-1}*\frac{\alpha_i}{\alpha_i+\beta_i}, \ \ i=1 \ à\ 100 $$
+Les paramètres $M_i$, $\lambda_i$, $\theta_i$, $\alpha_i$, et $\beta_i$ sont identiques à l'intérieur des trois groupes de produits dérivés.
+
+Ainsi, dans les groupes 1,2 et 3, on a respectivement, 
+
+$$E(L_i(t))=1500t*\frac{4}{2-1}*\frac{1}{1+1,5}, \ \ i=1 \ à\ 35 $$
+$$E(L_i(t))=2500t*\frac{5}{3-1}*\frac{1}{1+2}, \ \ i=36 \ à\ 60 $$
+
+$$E(L_i(t))=1000t*\frac{6}{4-1}*\frac{1}{1+2,5}, \ \ i=61\ à\ 100 $$
+On a donc 
+
+$$E(L_{totale}(t))=35*2400t+25*\frac{6250t}{3}+40*\frac{4000t}{7}$$  
+
+Finalement, 
+
+$$E(L_{totale}(t))=158.940,4762*t$$
+
+## b. Simulation et évaluation de la distribution de la perte totale actualisée sur 10 ans. Le nombre de perte, N(t), est un processus de Poisson. 
+
+La démarche suivie pour la simulation des pertes totales actualisées est décrite dans les lignes qui suivent.
+* simuler 35 fréquences N(10) pour les produits dérivés du premier groupe (35 produits dérivés),
+* pour chaque fréquence simulée, calculer la somme des pertes actualisées,
+* reprendre les deux premières étapes pour les 25 produits dérivés du deuxième groupe, et pour les 40 produits dérivés du troisième groupe,
+* calculer la perte totale actualisée en sommant les 100 pertes actualisées obtenues pour l'ensemble des produits dérivés.  
+
+
+
+```{r, echo=FALSE, eval=TRUE}
+### perteTotale(size,duree)
+###
+###simule un échantillon de taille donnée des pertes totales actualisées sur 
+### sur une période de durée entrée en arguments pour
+###l'ensemble des 100 produits dérivés du portefeuille
+##C'est une application du modèle fréquence-sévérité.
+##On suppose ici que la fréquence du nombre de perte sur une période
+## de longueur est un processus de renouvellement dont le temps entre 
+## entre deux renouvellements suit une loi gamma(theta, lambda)
+##
+##
+## Arguments
+##
+## size: taille de l'échantillon
+## duree: longueur de la période d'analyse
+##
+## Valeur
+##
+## vecteur de taille size des pertes totales actualisée 
+## pour l'ensemble du portefeuille de produits dérivés sur la durée souhaitée
+## par l'utilisateur, et pour un échantillon de taille voulue par ce dernier. 
+perteTotale<-function(size, duree){
+
+t<-duree
+
+  ### simul2(t)
+  ###
+  ## simule une perte totale actualisée sur t années pour
+  ###l'ensemble des 100 produits dérivés du portefeuille  
+  ##
+  ## Arguments
+  ##
+  ## t: longueur de la période d'analyse
+  ##
+  ## Valeur
+  ##
+  ## Valeur correspondant à la perte totale actualisée sur t pour un échantillon  
+  ## d'une seule observation pour l'ensemble du portefeuille de produits dérivés
+
+simul<-function(t){
+
+periode<-t
+### Simulation des premieres pertes pour les 35 produits financiers du groupe 1
+N1<-rpois(35, periode*rpareto(35,2,4))
+L_gr1<-numeric(35)
+for(i in 1:35){
+  
+  k<-N1[i]
+  sev<-numeric(k)
+  for(j in 1:k){
+    sev[j]<-exp(-0.03*rgamma(1,j,rpareto(1,2,4)))*1500*rbeta(1,1,1.5)
+  }
+  L_gr1[i]<-sum(sev)
+}
+
+### Simulation des premieres pertes pour les 25 produits financiers du groupe 2
+N2<-rpois(25, periode*rpareto(25,3,5))
+L_gr2<-numeric(25)
+for(i in 1:25){
+  
+  k<-N2[i]
+  sev2<-numeric(k)
+  for(j in 1:k){
+    sev2[j]<-exp(-0.03*rgamma(1,j,rpareto(1,3,5)))*2500*rbeta(1,1,2)
+  }
+  L_gr2[i]<-sum(sev2)
+}
+
+
+
+### Simulation des premieres pertes pour les 40 produits financiers du groupe 3
+N3<-rpois(40, periode*rpareto(40,4,6))
+L_gr3<-numeric(40)
+for(i in 1:40){
+  
+  k<-N3[i]
+  sev3<-numeric(k)
+  for(j in 1:k){
+    sev3[j]<-exp(-0.03*rgamma(1,j,rpareto(1,4,6)))*1000*rbeta(1,1,2.5)
+  }
+  L_gr3[i]<-sum(sev3)
+}
+sum(L_gr1,L_gr2,L_gr3)
+}
+
+####repetition n fois de la simulation
+taille<-size
+w<-numeric(taille)
+k <- 1
+repeat{ 
+  w[k]<-simul(duree)
+  k=k+1
+  if (k==taille+1){
+    break
+  }
+}
+w
+}
+x<-numeric(1000)
+x<-perteTotale(1000,10)
+
+
+```
+
+Les valeurs simulées à partir du logiciel R nous ont permis d'avoir les graphiques ci-après qui montrent la distribution de la perte totale actualisée sur 10 ans.
+
+```{r, echo=FALSE, eval=TRUE}
+#Graphiques
+
+plot(x,main="Graphique 1. Nuage des pertes totales actualisées", xlab="Nombre d'occurence", ylab="Pertes totales actualisées sur 10 ans")
+
+hist(x,freq = TRUE, main="Graphique 2.Histogramme des pertes totales actualisées sur 10 ans", xlab="Perte totale actualisée sur 10 ans")
+
+abline(v=quantile(x, 0.5), col="red", lwd=2, lty=2) #### Tracé en rouge de la médiane
+
+abline(v=mean(x), col="blue", lwd=2, lty=2) #### Tracé en bleu de la moyenne
+
+#Paramètres de dispersion
+variance_perte<-var(x)
+ecarttype<-sqrt(variance_perte)
+
+#intervalle de confiance
+a1<-mean(x) + qnorm(0.025)*ecarttype
+##Borne supérieure de l'intervalle de confiance de seuil 95% de la prime par perte pour u=F^{-1}(0,50)
+b1<-mean(x) + qnorm(0.975)*ecarttype
+
+```
+
+
+Sur le premier graphique, on peut noter une forte concentration des pertes totales actualisées entre 700.000\$ et 900.000\$.Quant au deuxième graphique, il indique que la distribution est symétrique car les pertes totales actualisées moyennes(tracé en bleu) et la médiane(tracé en rouge) sont presque confondues.En effet, la perte moyenne est égale à `r mean(x)` et la médiane vaut : `r median(x)`. L'écart-type des pertes est égal à `r ecarttype`. Ainsi, nous avons 95% de chance que la perte totale actualisée se situe dans l'intervalle  
+$$[`r a1`,`r b1`]$$
+
+\newpage
+
+Les approximations de la $VaR(1-\alpha)$ et de la $TVaR(1-\alpha)$ de la perte totale aux seuils $\alpha = 10\%, 5\% \ et \ 1\%$ sont présentées dans le tableau ci-dessous.
+
+```{r, echo=FALSE, eval=TRUE}
+
+## Calcul des VaR(0.9), VaR(0.95), VaR(0.99)
+var_quant<-numeric(3)
+var_quant<-quantile(x, c(0.9,0.95,0.99), type=7)
+
+
+###Verification
+#quant<-numeric(3) #utilité de la librairie(cvar) importée
+#quant<-VaR(x,p=c(0.9,0.95,0.99))
+#quant
+
+### calcul des TVaR(0.9), TVaR(0.95), TVaR(0.99) des observations (moyenne des observations
+## supérieures au quantile)
+
+tvar_q<-numeric(3)
+for (i in 1:3)
+{
+  tvar_q[i]<-mean(x[x > var_quant[i]])
+}
+
+```
+
+
+Seuil     |VaR                  | TVaR         |
+----------|---------------------| -------------| 
+$10\%$    |`r var_quant[1]`     | `r tvar_q[1]`|
+$5\%$     |`r var_quant[2]`     | `r tvar_q[2]`|
+$1\%$     |`r var_quant[3]`     | `r tvar_q[3]`|
+
+Selon ce tableau, $10\%$ des pertes totales actualisées sont supérieures à $`r var_quant[1]`$, $5\%$ de ces pertes sont au dessus de $`r var_quant[2]`$, et 
+$1\%$ des pertes sont plus grandes que `r var_quant[3]`. La moyenne des $10\%$ des pertes les plus élevées est égale à $`r tvar_q[1]`$, alors que les moyennes des $5\%$ et des $1\%$ des pertes les plus élevées sont respectivement, $`r tvar_q[2]`$, et $`r tvar_q[3]`$.
+
+## c. Simulation et évaluation de la distribution de la perte totale actualisée sur 10 ans. Le nombre de perte, N(t), est un processus de renouvellement 
+
+On fait l'hypothèse ici que $T_{i,k}\sim Gamma(\theta_i,\lambda_i)$. Ainsi, la  distribution du nombre de perte par produit dérivé, $N(t)$, peut s'écrire comme suit:
+  $$P(N(t)=n)=\sum_{k=n\theta_i}^{(n+1)\theta_i-1}\frac{(\lambda_it)^ke^{-(\lambda_it)}}{k!}$$  
+L'utilisation de la fonction de répartition inverse de cette distribution pour simuler la fréquence des pertes est fastidieuse. Nous allons utiliser le fait que le nombre de pertes dans l'intervalle $[0,t]$ a la distribution de N(t) lorsque le temps entre deux renouvellement est une variable aléatoire de distribution $Gamma(\theta_i,\lambda_i)$. Concrètement, nous générons des variables $Gamma(\theta_i,\lambda_i)$,
+$$T_{i,k}\sim Gamma(\theta_i,\lambda_i)$$  
+puis, nous définissons 
+
+$$N_i(t)=max(j:T_{i,1}+T_{i,2}+T_{i,3}+...T_{i,j}\leq t)$$
+
+La démarche suivie pour la simulation des pertes totales actualisées est identique à celle décrite à la question b.
+
+```{r, echo=FALSE,éval=TRUE}
+### perteTotale2(size,duree)
+###
+###simule un échantillon de taille donnée des pertes totales actualisées sur 
+### sur une période de durée entrée en arguments pour
+###l'ensemble des 100 produits dérivés du portefeuille
+##C'est une application du modèle fréquence-sévérité.
+##On suppose ici que la fréquence du nombre de perte sur une période
+## de longueur est un processus de renouvellement dont le temps entre 
+## entre deux renouvellements suit une loi gamma(theta, lambda)
+##
+##
+## Arguments
+##
+## size: taille de l'échantillon
+## duree: longueur de la période d'analyse
+##
+## Valeur
+##
+## vecteur de taille size des pertes totales actualisée 
+## pour l'ensemble du portefeuille de produits dérivés sur la durée souhaitée
+## par l'utilisateur, et pour un échantillon de taille voulue par ce dernier. 
+perteTotale2<-function(size, duree){
+ 
+  t<-duree
+
+  ### simul2(t)
+  ###
+  ## simule une perte totale actualisée sur t années pour
+  ###l'ensemble des 100 produits dérivés du portefeuille  
+  ##
+  ## Arguments
+  ##
+  ## t: longueur de la période d'analyse
+  ##
+  ## Valeur
+  ##
+  ## Valeur correspondant à la perte totale actualisée sur t pour un échantillon  
+  ## d'une seule observation pour l'ensemble du portefeuille de produits dérivés
+ simul2<-function(t){
+  periode<-t
+
+###Traitement du groupe 1
+### Simulation des premieres pertes pour les 35 produits financiers du groupe 1
+
+N1<-numeric(35)
+k <- 1
+repeat{
+i<-0
+Y<-rgamma(1,2,0.03)
+somme<-Y
+while(somme < periode)
+{
+  Y<-rgamma(1,2,0.03)
+  somme<-somme + Y
+  i<-i+1
+}
+
+N1[k]<-i
+k<-k+1
+if (k==36){
+  break
+  }
+}
+
+#### Calcul de la sévérité par fréquence de perte pour les 35 produits dérivés 
+###du groupe 1
+L_gr1<-numeric(35)
+for(i in 1:35){
+  
+  k<-N1[i]
+  sev<-numeric(k)
+  for(j in 1:k){
+    sev[j]<-exp(-0.03*rgamma(1,j*2,0.03))*1500*rbeta(1,1,1.5)
+  }
+  L_gr1[i]<-sum(sev)
+}
+
+
+###Traitement du groupe 2
+
+### Simulation des premieres pertes pour les 25 produits financiers du groupe 2
+
+N2<-numeric(25)
+k <- 1
+repeat{
+  i<-0
+  Y<-rgamma(1,3,0.04)
+  somme<-Y
+  while(somme < periode)
+  {
+    Y<-rgamma(1,3,0.04)
+    somme<-somme + Y
+    i<-i+1
+  }
+  
+  N2[k]<-i
+  k<-k+1
+  if (k==26){
+    break
+  }
+}
+
+#### Calcul de la sévérité par fréquence de perte pour les 25 produits dérivés 
+##du groupe 2
+L_gr2<-numeric(25)
+for(i in 1:25){
+  
+  k<-N2[i]
+  sev2<-numeric(k)
+  for(j in 1:k){
+    sev2[j]<-exp(-0.03*rgamma(1,j*3,0.04))*2500*rbeta(1,1,2)
+  }
+  L_gr2[i]<-sum(sev2)
+}
+
+
+###Traitement du groupe 3
+
+### Simulation des premieres pertes pour les 40 produits financiers du groupe 3
+
+N3<-numeric(40)
+k <- 1
+repeat{
+  i<-0
+  Y<-rgamma(1,4,0.05)
+  somme<-Y
+  while(somme < periode)
+  {
+    Y<-rgamma(1,4,0.05)
+    somme<-somme + Y
+    i<-i+1
+  }
+  
+  N3[k]<-i
+  k<-k+1
+  if (k==41){
+    break
+  }
+}
+
+#### Calcul de la sévérité par fréquence de perte pour les 25 produits dérivés 
+##du groupe 2
+L_gr3<-numeric(40)
+for(i in 1:40){
+  
+  k<-N3[i]
+  sev3<-numeric(k)
+  for(j in 1:k){
+    sev3[j]<-exp(-0.03*rgamma(1,j*4,0.05))*1000*rbeta(1,1,2.5)
+  }
+  L_gr3[i]<-sum(sev3)
+}
+sum(L_gr1,L_gr2,L_gr3)
+}
+
+####repetition n fois de la simulation
+taille<-size
+w<-numeric(taille)
+k <- 1
+repeat{ 
+  w[k]<-simul2(duree)
+  k=k+1
+  if (k==taille+1){
+    break
+  }
+}
+w
+}
+y<-perteTotale2(1000,10)
+
+```
+
+Les graphiques de la distribution de la perte
+totale actualisée sur 10 ans pour l'ensemble du portefeuille ont été simulées à l'aide de R.
+
+```{r, echo=FALSE, eval=TRUE}
+#Graphiques
+
+plot(y,main="Graphique 3.Nuage des pertes totales actualisées", xlab="Nombre d'occurence", ylab="Pertes totales actualisées sur 10 ans")
+
+hist(y,freq = TRUE, main="Graphique 4.Histogramme des pertes totales actualisées sur 10 ans", xlab="Perte totale actualisée sur 10 ans")
+
+abline(v=quantile(y, 0.5), col="red", lwd=2, lty=2) #### Tracé en rouge de la médiane
+
+abline(v=mean(y), col="blue", lwd=2, lty=2) #### Tracé en bleu de la moyenne
+
+#Paramètres de dispersion
+variance_perte2<-var(y)
+ecarttype2<-sqrt(variance_perte2)
+
+#intervalle de confiance
+a2<-mean(y) + qnorm(0.025)*ecarttype2
+##Borne supérieure de l'intervalle de confiance de seuil 95% de la prime par perte pour
+##u=F^{-1}(0,50)
+b2<-mean(y) + qnorm(0.975)*ecarttype2
+
+## Calcul des VaR(0.9), VaR(0.95), VaR(0.99)
+var_quant2<-numeric(3)
+var_quant2<-quantile(y, c(0.9,0.95,0.99), type=7)
+
+
+### calcul des TVaR(0.9), TVaR(0.95), TVaR(0.99) des observations (moyenne des observations
+## supérieures au quantile)
+
+tvar_q2<-numeric(3)
+for (i in 1:3)
+{
+  tvar_q2[i]<-mean(y[y > var_quant2[i]])
+}
+
+```
+
+Un constat évident que l'on peut faire à lecture des graphiques est celui de la faiblesse des pertes totales actualisées sur 10 ans. Ainsi, sur le premier graphique, on peut noter que la forte concentration des pertes totales actualisées est désormais entre 9.000\$ et 11.000\$.De même, sur le second graphique, bien que la distribution soit toujours symétrique, les valeurs moyenne et la médiane ont chuté, respectivement, à `r mean(y)`, et `r median(y)`. L'écart-type des pertes est égal à `r ecarttype2`, et l'intervalle de confiance au seuil de $95\%$ pour la perte totale moyenne est   
+
+$$[`r a2`,`r b2`]$$ 
+
+
+```{r, echo=FALSE, eval=TRUE}
+##moyenneNt(intheta, inlambda,inperiode)
+##Calcule la moyenne du processus de renouvellement, N(t), dont le temps
+##entre deux renouvellements suit une loi gamma(intheta, inlambda)
+##
+##Arguments:
+##
+## intheta : premier paramètre de la distribution gamma 
+## inlambda: deuxième paramètre de la distribution gamma
+## inperiode: longueur de l'intervalle de temps d'analyse du processus
+##
+##
+moyenneNt<-function(intheta, inlambda,inperiode){
+  
+  theta<-intheta
+  lambda<-inlambda
+  t<-inperiode
+  
+
+##Fonction qui calcule la distribution, Prob(N(t)=n), d'un processus de renouvellement
+##dont le temps entre les évènement suit une loi gamma(theta, lambda)
+##
+## Arguments : 
+## n: nombre d'évènements entre 0 et t
+##
+cdf<-function(n,thet, lambd,duree)
+{
+  dep<-theta*n
+  fin<-theta*(n+1)-1
+  dimension<-theta
+  P<-numeric(dimension)
+  for(i in dep:fin)
+  {
+    P[i%%2+1]<-exp(-t*lambda) * ((lambda*t)^i)*(1/factorial(i))
+  }
+  sum(P)
+}
+
+### Calcul de la moyenne du processus de renouvellement
+
+###Vecteur des n
+po<-numeric(101)
+po[1]<-0
+for (i in 2:101)
+{
+  po[i]<-po[i-1]+1
+}
+
+##Vecteur des probabilités
+
+
+resul<-numeric(101)
+for (i in 1:101)
+{
+  resul[i]<-cdf(n=i-1, theta, lambda, t)
+}
+resul
+###Moyenne du processus de renouvellement entre t=0 et t=10
+sum(po*resul)
+#resul
+}
+
+#moyenneNt(2,0.03,10)
+#moyenneNt(3,0.04,10)
+#moyenneNt(4,0.05,10)
+
+```
+
+\newpage  
+
+
+L'explication de la faiblesse des pertes totales actualisées sur 10, dans le cas courant, tire son origine de la distribution du nombre de perte sur 10 ans, étant donné que les caractéristiques de la sévérité n'ont pas changé.En effet, le nombre moyen de perte par groupe de produits dérivés a fortement baissé, comme on peut le voir dans le tableau ci-dessous.
+
+$E(N(10))$           | $Hypothèses \ question\ a$| $Hypothèses \ question\ b$|
+---------------------|---------------------------| --------------------------| 
+$Groupe\ 1$          |`r 10*(4/(2-1))`           | `r moyenneNt(2,0.03,10)`  |
+$Groupe\ 2$          |`r 10*(5/(3-1))`           | `r moyenneNt(3,0.04,10)`  | 
+$Groupe\ 3$          |`r 10*(6/(4-1))`           | `r moyenneNt(4,0.05,10)`  |
+
+
+
+Les approximations de la $VaR(1-\alpha)$ et de la $TVaR(1-\alpha)$ de la perte totale aux seuils $\alpha = 10\%, 5\% \ et \ 1\%$ sont recapitulées dans le tableau ci-dessous.
+
+Seuil     |VaR                   | TVaR          |
+----------|----------------------| --------------| 
+$10\%$    |`r var_quant2[1]`     | `r tvar_q2[1]`|
+$5\%$     |`r var_quant2[2]`     | `r tvar_q2[2]`|
+$1\%$     |`r var_quant2[3]`     | `r tvar_q2[3]`|
+
+Selon ce tableau, $10\%$ des pertes totales actualisées sont supérieures à $`r var_quant2[1]`$, $5\%$ de ces pertes sont au dessus de $`r var_quant2[2]`$, et 
+$1\%$ des pertes sont plus grandes que `r var_quant2[3]`. La moyenne des $10\%$ des pertes les plus élevées est égale à $`r tvar_q2[1]`$, alors que les moyennes des $5\%$ et des $1\%$ des pertes les plus élevées sont, respectivement, $`r tvar_q2[2]`$, et $`r tvar_q2[3]`$. Comme on peut le constater, ces valeurs sont également bien inférieures à celles obtenues précédemment. 
+
+\newpage
+
+
+# Deuxième cas : calcul d’options et temps d’attente
+
+## a. Approximation du prix de l’option européenne avec les prix d’exercice de K1 et K2 
+
+Le prix de l'option européenne est égale à la valeur actualisée à $t=0$ du gain réalisé au temps $T$.
+
+$$Prix_{option}=max(0,S_T-K)*e^{-\delta *T}$$  
+où $S_T$ et $K$ sont respectivement la valeur de l'action au temps $T$ et le prix d'exercice de l'option. 
+
+De façon empirique,
+
+$$Prix_{option}=\frac{1}{n}\sum_{i=1}^n(max(0,S_i-K)*e^{-\delta *T})$$ 
+Nous devons donc simuler 1000 observations indépendantes et identiquement distribuées de $Prix_{option}$, puis en calculer la moyenne.  
+
+Notons que 
+ 
+ $$S_t=S_0e^{\mu t+\sigma Z(t)}$$
+et que les valeurs simulées de$S_t$ sont obtenues comme suit:
+
+* simuler $Y\sim N(0,1)$
+* poser $Z(t)=\sqrt t Y$ à partir de celles de $Z(t)\sim N(0,\sqrt{t})$
+* poser $S_t=S_0*e^{\mu t+\sigma Z(t)}$
+
+```{r, echo=FALSE, eval=TRUE}
+##Prix d'exercice
+K1<-115
+K2<-127
+##Échéances
+T1<-1
+T2<-2
+
+#Nombre de simulation
+size<-1000
+
+
+## Simulation de 1000 observations d'une distribution log-normale pour ST1
+xx<-100*exp(0.07*T1+0.14*sqrt(T1)*rnorm(size,0,1))
+
+## Simulation de 1000 observations d'une distribution log-normale pour ST2
+yy<-100*exp(0.07*T2+0.14*sqrt(T2)*rnorm(size,0,1))
+
+#St1<-mean(x) #inutile
+#St2<-mean(y) #inutile
+
+
+##Le prix est la valeur actualisée à t=0 de la valeur de l'option selon toutes les combinaisons de K et T
+
+#Cette démarche qui consiste à calculer la moyenne du prix de l'action à t1 ( ou t2)
+##puis de soustraire le prix d'exercice avant de comparer le résultat à 0 n'est pas bonne
+##car toute l'information procurée par l'échantillon simulé est perdue dans la moyenne
+#val_T1K1<-max(0,St1-K1)*exp(-0.02*T1)  #démarche erronée
+#val_T1K2<-max(0,St1-K2)*exp(-0.02*T1)  #démarche erronée
+#val_T2K1<-max(0,St2-K1)*exp(-0.02*T2)  #démarche erronée
+#val_T2K2<-max(0,St2-K2)*exp(-0.02*T2)  #démarche erronée
+
+##Calcul alternatif
+##Cette démarche est la bonne car elle simule le gain, en calcule la valeur actualisée
+##puis la moyenne
+val2_T1K1<-numeric(1000)
+val2_T1K1<-pmax(0,xx-K1)*exp(-0.02*T1)
+prix_opt_T1K1<-mean(val2_T1K1)
+
+val2_T1K2<-numeric(1000)
+val2_T1K2<-pmax(0,xx-K2)*exp(-0.02*T1)
+prix_opt_T1K2<-mean(val2_T1K2)
+
+val2_T2K1<-numeric(1000)
+val2_T2K1<-pmax(0,yy-K1)*exp(-0.02*T2)
+prix_opt_T2K1<-mean(val2_T2K1)
+
+val2_T2K2<-numeric(1000)
+val2_T2K2<-pmax(0,yy-K2)*exp(-0.02*T2)
+prix_opt_T2K2<-mean(val2_T2K2)
+
+##Calcul du prix de l'option exotique
+
+val_exo<-numeric(1000)
+val_exo<-val2_T1K1+val2_T2K2
+prix_opt_exo<-mean(val_exo)
+
+##Calcul de la VaR(95) et de la VaR(5) du profit lié à l'option européenne 1 
+## et du profit lié à l'option exotique
+
+#vecteur des profits simulés pour l'option 1
+profit1<-numeric(1000)
+profit1<-val2_T1K1-prix_opt_T1K1
+
+#vecteur des profits simulés pour l'option exotique
+profitExo<-numeric(1000)
+profitExo<-val2_T1K1+val2_T2K2-prix_opt_exo
+
+var_op1<-numeric(2)
+var_op_exo<-numeric(2)
+var_op1<-quantile(profit1, c(0.95,0.05), type=7)
+var_op_exo<-quantile(profitExo, c(0.95,0.05), type=7)
+
+```
+
+Le calcul du prix des options par simulation (à l'aide de R) donne les résultats présentés dans le tableaux suivant.  
+
+$Option$             |$Prix$             | 
+---------------------|-------------------|
+$Options\ européennes$                   |
+$option1(T1,K1)$     |`r prix_opt_T1K1`  |
+$option2(T1,K2)$     |`r prix_opt_T1K2`  |
+$option3(T2,K1)$     |`r prix_opt_T2K1`  |
+$option4(T2,K2)$     |`r prix_opt_T2K2`  |
+$Option\ exotique$                       |
+$option(T1,K1,T2,K2)$|`r prix_opt_exo`   |
+
+
+## b. VaR(95) et Var(5) du profit lié à l'option à la première option européenne et à l'option exotique
+
+Les profits moyens et les valeurs à risque pour l'option1(T1,K1) et l'option exotique
+sont récapitulés dans le tableau suivant.
+
+$Option$             |$Profit\ moyen$    | $VaR(95\%)$     |$VaR(5\%)$       |
+---------------------|-------------------|---------------- |-----------------|
+$Option\ européenne$                     |
+$option1(T1,K1)$     |`r mean(profit1)`  |`r var_op1[1]`   |`r var_op1[2]`   |
+$Option\ exotique$                       |
+$option(T1,K1,T2,K2)$|`r mean(profitExo)`|`r var_op_exo[1]`|`r var_op_exo[2]`|
+
+
+Les histogrammes des profits sont construits à partir des données simulées
+
+
+```{r, echo=FALSE, eval=TRUE}
+##Histogramme du profit de l'option1(T1,K1)
+
+hist(profit1,freq = TRUE, main="Graphique 5.Histogramme des profits sur l'option européenne 1", xlab="Profit en $")
+abline(v=c(var_op1[1],var_op1[2]), col=c("blue", "red"), lty=c(2,2), lwd=c(3, 3))
+
+##Histogramme du profit de l'option exotique(T1,K1 et T2,K2)
+
+hist(profitExo,freq = TRUE, main="Graphique 6.Histogramme des profits sur l'option exotique", xlab="Profit en $")
+abline(v=c(var_op_exo[1],var_op_exo[2]), col=c("blue", "red"), lty=c(2,2), lwd=c(3, 3))
+ 
+```
+
+## c. Valeur théorique du paramètre $\alpha$ de manière que le processus de la valeur de l’action suive une Martingale  
+
+Pour que le processus soit une martingale, il faut que $E(S_t|S_{t-1})=S_{t-1}$.
+
+Ce qui suppose que 
+
+$$E(\mu +\sigma Z'(1)+\sum_{N(t-1)}^{N(t)}Xi)=0$$  
+Ce qui implique que 
+$$\mu + \frac{\lambda \alpha}{2}=0$$  
+ou encore 
+$$\alpha=\frac{-2\mu}{\lambda}$$   
+soit, 
+
+$$\alpha=\frac{-2*0,07}{0,1}=-1,4$$   
+
+## d. Valeur théorique du paramètre $\alpha$ de manière que le processus de la valeur de l’action suit une sous-Martingale de rendement annuel espéré de $e^{\mu}-1$ 
+
+Ici, on veut 
+
+$$E(S_t|S_{t-1})=S_{t-1}e^{\mu}$$  
+or 
+
+$$E(S_t|S_{t-1})=E(S_{t-1}e^{\mu+\sigma Z'(1)+\sum_{N(t-1)}^{N(t)}Xi)}|S{t-1})$$    
+$$E(S_t|S_{t-1})=S_{t-1}E(e^{\mu+\sigma Z'(1)+\sum_{N(t-1)}^{N(t)}Xi})$$   
+Étant donné l'indépendance de $\mu+\sigma Z'(1)$ et $\sum_{N(t-1)}^{N(t)}Xi$, on peut écrire ce qui suit  
+
+$$E(e^{\mu+\sigma Z'(1)+\sum_{N(t-1)}^{N(t)}Xi})=E(e^{\mu+\sigma Z'(1)})*E(e^{\sum_{N(t-1)}^{N(t)}Xi})$$  
+On sait que $K=\mu+\sigma Z'(1)\sim N(\mu,\sigma)$, donc $E(e^{\mu+\sigma Z'(1)})=M_K(1)$, où $M_K(u)$ est la fonction génératrice des moments de $K$.  
+
+Par conséquent,  
+
+$$M_K(1)=e^{\mu+\frac{\sigma^2}{2}}$$  
+De même, $E(e^{\sum_{N(t-1)}^{N(t)}Xi})=M_{S(t)}(1)$, où $M_{S(t)}(u)$ est la fonction génératrice de $S(t)=\sum_{i=1}^{N(t)}Xi$.  
+
+Donc
+
+$$M_{S(t)}(1)=e^{\lambda(\frac{e^\alpha-1}{\alpha})-1}$$  
+
+
+\newpage
+
+Ainsi, 
+
+
+$$E(S_t|S_{t-1})=S_{t-1}*e^{\mu+\frac{\sigma^2}{2}}*e^{\lambda(\frac{e^\alpha-1}{\alpha})-1}$$ 
+Pour que 
+
+$$E(S_t|S_{t-1})=S_{t-1}e^{\mu}$$ 
+il faut que 
+
+$$\frac{\sigma^2}{2}*\lambda(\frac{e^\alpha-1}{\alpha}-1)=0$$  
+
+
+
+Avec $\sigma=0,14$, $\lambda=0,1$, on trouve la valeur recherchée de $\alpha$,
+
+```{r, echo=FALSE, eval=TRUE}
+fun<-function(x) 0.0098+(0.1/x)*(exp(x)-1)-0.1
+#curve(fun(x), -10, 2)
+#abline(h = 0, lty = 3)
+uni <- uniroot(fun, c(-10, 2))$root
+#points(uni, 0, pch = 16, cex = 2)
+
+
+```
+
+
+$$\alpha=`r uni`$$
+\newpage
+
+## d. Simulation de 1000 scénarios du temps nécessaire avant que l’action augmente de $100\%$ de valeur
+
+```{r, echo=FALSE, eval=TRUE}
+mu<-0.07
+sigma<-0.14
+lambda<-0.1
+alpha<--0.2099832
+Sdepart<-100
+t1<-0
+beta<-1
+
+temps_barrier_f<-numeric(1000) #temps en fréquence hebdomadaire où barrière atteinte 
+temps_barrier_n<-numeric(1000) ## numéro de la semaine ou barrière est atteinte (pas demandé)
+k <- 1
+repeat{
+
+  i<-0
+  St<-Sdepart
+  temps<-t1
+  while(St < (1+beta)*Sdepart)  {
+    
+    ps<-rcomppois(1,lambda,model.sev = runif(min=alpha,max = 0))
+    Y<-rnorm(1,0,1)
+    Z<-sqrt(temps)*Y
+    St<-Sdepart*exp(mu*temps+sigma*Z+ps)
+    temps<-temps+(1/52)
+    i<-i+1
+  }
+
+  temps_barrier_f[k]<-temps-(1/52)
+  temps_barrier_n[k]<-i-1 #Cette variable n'est pas demandée ici
+  
+  k<-k+1
+  if (k==1001){
+  break
+  }
+
+}
+
+fur<-c(mean(temps_barrier_f),sd(temps_barrier_f))
+ruf<-quantile(temps_barrier_f, c(.01, .05, .1, .90, .95, .99),type=7)
+
+hist(temps_barrier_f,main="Temps pour que le prix de l'action atteigne 200", freq = TRUE, xlab="temps en fréquence hebdomadaire")
+abline(v=c(fur[1],ruf[1],ruf[2],ruf[3],ruf[4],ruf[5],ruf[6]), col=c("blue","blueviolet", "pink1","darkgreen","firebrick","olivedrab", "red"), lty=c(2,2,2,2,2,2,2), lwd=c(3,3,3,3,3,3,3))
+
+```
+
+Les principales caractéristiques de la distribution du temps nécessaire pour que la valeur de l'action atteigne $200$ sont résumées dans le tableau ci-dessous.
+
+$Caractéristiques\ du\ temps\ nécessaire\ pour\ atteindre\ 200$|$Valeur$  | 
+---------------------------------------------------------------|----------|
+$Moyenne$                                                      |`r fur[1]`|
+$Écart\ type$                                                  |`r fur[2]`|
+$1er\ centile$                                                 |`r ruf[1]`|
+$5e\ centile$                                                  |`r ruf[2]`|
+$10e\ centile$                                                 |`r ruf[3]`|
+$90e\ centile$                                                 |`r ruf[4]`|
+$95e\ centile$                                                 |`r ruf[5]`|
+$99e\ centile$                                                 |`r ruf[6]`|
+
+En moyenne, le prix de l'action passe de $100$ à $200$ en `r fur[1]` fréquence hebdomadaire, ce qui correspond à `r mean(temps_barrier_n)` semaines.
+
+
+\newpage
+
+
+# Bibliographie  
+
+* Rakhshan, A., Pishro-Nik, H.,Introduction to Probability.Chapter13.
+https://www.probabilitycourse.com/chapter13/Chapter_13.pdf
+
+
+* Goulet, V., (2020),Méthodes numériques en actuariat avec R — Simulation
+stochastique
